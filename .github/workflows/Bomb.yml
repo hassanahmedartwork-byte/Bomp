@@ -1,0 +1,503 @@
+name: Build iPhone IPA
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build-ipa:
+    runs-on: macos-latest
+    steps:
+      - name: Create iOS Project Files
+        run: |
+          mkdir -p TheBombGame
+
+          cat << 'EOF' > project.yml
+          name: TheBombGame
+          options:
+            bundleIdPrefix: com.neon3d
+            deploymentTarget:
+              iOS: "15.0"
+          targets:
+            TheBombGame:
+              type: application
+              platform: iOS
+              sources:
+                - TheBombGame
+              settings:
+                base:
+                  PRODUCT_BUNDLE_IDENTIFIER: com.neon3d.thebombgame
+                  INFOPLIST_FILE: TheBombGame/Info.plist
+                  MARKETING_VERSION: "1.0.0"
+                  CURRENT_PROJECT_VERSION: "1"
+                  TARGETED_DEVICE_FAMILY: "1"
+                  SWIFT_VERSION: "5.0"
+                  CODE_SIGN_IDENTITY: ""
+                  CODE_SIGNING_REQUIRED: NO
+                  CODE_SIGNING_ALLOWED: NO
+          EOF
+
+          cat << 'EOF' > TheBombGame/Info.plist
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleDevelopmentRegion</key>
+              <string>ar</string>
+              <key>CFBundleDisplayName</key>
+              <string>لعبة القنبلة</string>
+              <key>CFBundleExecutable</key>
+              <string>$(EXECUTABLE_NAME)</string>
+              <key>CFBundleIdentifier</key>
+              <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+              <key>CFBundleInfoDictionaryVersion</key>
+              <string>6.0</string>
+              <key>CFBundleName</key>
+              <string>TheBombGame</string>
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
+              <key>CFBundleShortVersionString</key>
+              <string>1.0.0</string>
+              <key>CFBundleVersion</key>
+              <string>1</string>
+              <key>LSRequiresIPhoneOS</key>
+              <true/>
+              <key>UIApplicationSceneManifest</key>
+              <dict>
+                  <key>UIApplicationSupportsMultipleScenes</key>
+                  <false/>
+              </dict>
+              <key>UILaunchScreen</key>
+              <dict/>
+              <key>UISupportedInterfaceOrientations</key>
+              <array>
+                  <string>UIInterfaceOrientationPortrait</string>
+              </array>
+          </dict>
+          </plist>
+          EOF
+
+          cat << 'EOF' > TheBombGame/TheBombGame.swift
+          import SwiftUI
+          import Combine
+          import AVFoundation
+          import AudioToolbox
+          import UIKit
+
+          @main
+          struct TheBombGameApp: App {
+              var body: some Scene {
+                  WindowGroup {
+                      BombGameView()
+                          .preferredColorScheme(.dark)
+                  }
+              }
+          }
+
+          struct TopicsDatabase {
+              static let allTopics: [String] = [
+                  "أسماء دول بحرف الميم",
+                  "أكلات شعبية مشهورة",
+                  "حيوانات مفترسة",
+                  "أفلام عربية كوميدية",
+                  "كلمات تبدأ بحرف السين",
+                  "فواكه وخضروات صيفية",
+                  "عواصم دول عربية",
+                  "أشياء موجودة في المطبخ",
+                  "أسماء بنات بحرف الألف",
+                  "أسماء أولاد بحرف العين",
+                  "ماركات سيارات عالمية",
+                  "طيور تطير في السماء",
+                  "أشياء لونها أحمر",
+                  "مهن ووظائف تحتاج زي رسمي",
+                  "أجهزة كهربائية في البيت",
+                  "مشروبات ساخنة وباردة",
+                  "حيوانات تعيش في البحر",
+                  "كلمات تبدأ بحرف القاف",
+                  "دول تقع في قارة آسيا",
+                  "دول تقع في قارة أفريقيا",
+                  "حلويات شرقية وغربية",
+                  "أشياء نأخذها معنا في السفر",
+                  "أشياء موجودة في المدرسة",
+                  "رياضات أولمبية شهيرة",
+                  "آلات موسيقية متنوعة",
+                  "كلمات تبدأ بحرف النون",
+                  "نباتات وأزهار عطرية",
+                  "أشياء مصنوعة من الخشب",
+                  "أكلات سريعة (فاست فود)",
+                  "شخصيات كرتونية مشهورة"
+              ]
+          }
+
+          final class BombGameViewModel: ObservableObject {
+              @Published var currentTopic: String = "اضغط \"بدء اللعبة\" لاختيار موضوع عشوائي!"
+              @Published var isPlaying: Bool = false
+              @Published var didExplode: Bool = false
+              @Published var tensionIntensity: Double = 0.0
+              @Published var eyeOffset: CGSize = .zero
+
+              private var explosionTimer: Timer?
+              private var tickTimer: Timer?
+              private var roundStartDate: Date?
+              private var hiddenDuration: TimeInterval = 30.0
+
+              func startGame() {
+                  stopTimers()
+                  didExplode = false
+                  isPlaying = true
+                  currentTopic = TopicsDatabase.allTopics.randomElement() ?? "أكلات شعبية"
+                  hiddenDuration = Double.random(in: 20.0...60.0)
+                  roundStartDate = Date()
+                  tensionIntensity = 0.0
+                  scheduleNextTick()
+                  explosionTimer = Timer.scheduledTimer(withTimeInterval: hiddenDuration, repeats: false) { [weak self] _ in
+                      self?.triggerExplosion()
+                  }
+              }
+
+              func endGameManually() {
+                  stopTimers()
+                  isPlaying = false
+                  didExplode = false
+                  tensionIntensity = 0.0
+                  eyeOffset = .zero
+                  currentTopic = "تم إيقاف الجولة! اضغط بدء اللعبة لجولة جديدة"
+              }
+
+              private func scheduleNextTick() {
+                  guard isPlaying, let start = roundStartDate else { return }
+                  let elapsed = Date().timeIntervalSince(start)
+                  let progress = min(1.0, max(0.0, elapsed / hiddenDuration))
+                  tensionIntensity = progress
+
+                  let range = CGFloat(4.0 + progress * 7.0)
+                  eyeOffset = CGSize(
+                      width: CGFloat.random(in: -range...range),
+                      height: CGFloat.random(in: -range...range)
+                  )
+
+                  AudioServicesPlaySystemSound(1104)
+                  let generator = UIImpactFeedbackGenerator(style: progress > 0.7 ? .heavy : .medium)
+                  generator.impactOccurred()
+
+                  let nextInterval = max(0.09, 0.65 - pow(progress, 1.35) * 0.55)
+                  tickTimer = Timer.scheduledTimer(withTimeInterval: nextInterval, repeats: false) { [weak self] _ in
+                      self?.scheduleNextTick()
+                  }
+              }
+
+              private func triggerExplosion() {
+                  stopTimers()
+                  isPlaying = false
+                  didExplode = true
+                  tensionIntensity = 1.0
+                  AudioServicesPlaySystemSound(1304)
+                  AudioServicesPlaySystemSound(kSystemSoundID_Vibrate)
+                  let notif = UINotificationFeedbackGenerator()
+                  notif.notificationOccurred(.error)
+              }
+
+              private func stopTimers() {
+                  explosionTimer?.invalidate()
+                  tickTimer?.invalidate()
+                  explosionTimer = nil
+                  tickTimer = nil
+              }
+          }
+
+          struct BombGameView: View {
+              @StateObject private var vm = BombGameViewModel()
+              @State private var sparkPhase: Bool = false
+
+              var body: some View {
+                  ZStack {
+                      RadialGradient(
+                          gradient: Gradient(colors: [
+                              Color(red: 0.25, green: 0.04, blue: 0.45),
+                              Color(red: 0.08, green: 0.01, blue: 0.18),
+                              Color(red: 0.03, green: 0.0, blue: 0.08)
+                          ]),
+                          center: .center,
+                          startRadius: 40,
+                          endRadius: 500
+                      )
+                      .ignoresSafeArea()
+
+                      VStack(spacing: 24) {
+                          Text("لعبة القنبلة")
+                              .font(.system(size: 40, weight: .black, design: .rounded))
+                              .foregroundStyle(
+                                  LinearGradient(
+                                      colors: [.white, Color(red: 1.0, green: 0.45, blue: 0.75), .orange],
+                                      startPoint: .top,
+                                      endPoint: .bottom
+                                  )
+                              )
+                              .shadow(color: Color.pink.opacity(0.85), radius: 12, x: 0, y: 0)
+                              .padding(.top, 12)
+
+                          VStack(spacing: 10) {
+                              Text("الموضوع:")
+                                  .font(.system(size: 22, weight: .heavy, design: .rounded))
+                                  .foregroundColor(.orange)
+                                  .shadow(color: .orange.opacity(0.9), radius: 8)
+
+                              Text(vm.currentTopic)
+                                  .font(.system(size: 26, weight: .black, design: .rounded))
+                                  .foregroundColor(.white)
+                                  .multilineTextAlignment(.center)
+                                  .shadow(color: .pink.opacity(0.8), radius: 10)
+                                  .padding(.horizontal, 12)
+                          }
+                          .frame(maxWidth: .infinity)
+                          .padding(.vertical, 22)
+                          .background(
+                              RoundedRectangle(cornerRadius: 26)
+                                  .fill(Color(red: 0.14, green: 0.03, blue: 0.28).opacity(0.9))
+                          )
+                          .overlay(
+                              RoundedRectangle(cornerRadius: 26)
+                                  .stroke(
+                                      LinearGradient(
+                                          colors: [.pink, .orange, .purple, .pink],
+                                          startPoint: .topLeading,
+                                          endPoint: .bottomTrailing
+                                      ),
+                                      lineWidth: 3.5
+                                  )
+                                  .shadow(color: .pink.opacity(0.8), radius: 12)
+                          )
+                          .padding(.horizontal, 20)
+
+                          Spacer()
+
+                          ZStack {
+                              Circle()
+                                  .fill(
+                                      RadialGradient(
+                                          colors: [
+                                              vm.tensionIntensity > 0.6 ? Color.red.opacity(0.55) : Color.pink.opacity(0.35),
+                                              Color.clear
+                                          ],
+                                          center: .center,
+                                          startRadius: 10,
+                                          endRadius: 150
+                                      )
+                                  )
+                                  .frame(width: 280, height: 280)
+
+                              VStack(spacing: -14) {
+                                  ZStack {
+                                      Circle()
+                                          .fill(
+                                              RadialGradient(
+                                                  colors: [.white, .yellow, .orange, .clear],
+                                                  center: .center,
+                                                  startRadius: 2,
+                                                  endRadius: 28
+                                              )
+                                          )
+                                          .frame(width: sparkPhase ? 52 : 36, height: sparkPhase ? 52 : 36)
+                                          .shadow(color: .orange, radius: 16)
+                                          .offset(x: 28, y: -12)
+                                  }
+
+                                  RoundedRectangle(cornerRadius: 8)
+                                      .fill(
+                                          LinearGradient(
+                                              colors: [Color.gray, Color(white: 0.2)],
+                                              startPoint: .leading,
+                                              endPoint: .trailing
+                                          )
+                                      )
+                                      .frame(width: 54, height: 26)
+                                      .zIndex(2)
+
+                                  ZStack {
+                                      Circle()
+                                          .fill(
+                                              RadialGradient(
+                                                  gradient: Gradient(colors: [
+                                                      Color(red: 0.32, green: 0.35, blue: 0.45),
+                                                      Color(red: 0.12, green: 0.13, blue: 0.18),
+                                                      Color(red: 0.03, green: 0.03, blue: 0.06)
+                                                  ]),
+                                                  center: UnitPoint(x: 0.35, y: 0.3),
+                                                  startRadius: 8,
+                                                  endRadius: 115
+                                              )
+                                          )
+                                          .frame(width: 210, height: 210)
+                                          .shadow(color: .purple.opacity(0.6), radius: 24, x: 0, y: 12)
+
+                                      Ellipse()
+                                          .fill(Color.white.opacity(0.45))
+                                          .frame(width: 48, height: 22)
+                                          .rotationEffect(.degrees(-30))
+                                          .offset(x: -45, y: -52)
+
+                                      HStack(spacing: 18) {
+                                          BombEyeView(pupilOffset: vm.eyeOffset)
+                                          BombEyeView(pupilOffset: vm.eyeOffset)
+                                      }
+                                      .offset(y: 4)
+                                  }
+                              }
+                              .offset(
+                                  x: vm.isPlaying ? CGFloat.random(in: -4...4) * CGFloat(0.5 + vm.tensionIntensity) : 0,
+                                  y: vm.isPlaying ? CGFloat.random(in: -4...4) * CGFloat(0.5 + vm.tensionIntensity) : 0
+                              )
+                          }
+                          .onAppear {
+                              withAnimation(.easeInOut(duration: 0.15).repeatForever(autoreverses: true)) {
+                                  sparkPhase.toggle()
+                              }
+                          }
+
+                          Spacer()
+
+                          HStack(spacing: 16) {
+                              Button(action: {
+                                  vm.startGame()
+                              }) {
+                                  HStack(spacing: 10) {
+                                      Image(systemName: "play.fill")
+                                          .font(.title2.bold())
+                                      Text("بدء اللعبة")
+                                          .font(.system(size: 22, weight: .black, design: .rounded))
+                                  }
+                                  .foregroundColor(.white)
+                                  .frame(maxWidth: .infinity)
+                                  .padding(.vertical, 18)
+                                  .background(
+                                      LinearGradient(
+                                          colors: [Color.green, Color(red: 0.0, green: 0.7, blue: 0.3)],
+                                          startPoint: .top,
+                                          endPoint: .bottom
+                                      )
+                                  )
+                                  .cornerRadius(22)
+                                  .shadow(color: Color.green.opacity(0.6), radius: 12, x: 0, y: 6)
+                              }
+                              .disabled(vm.isPlaying)
+                              .opacity(vm.isPlaying ? 0.5 : 1.0)
+
+                              Button(action: {
+                                  vm.endGameManually()
+                              }) {
+                                  HStack(spacing: 10) {
+                                      Image(systemName: "xmark.circle.fill")
+                                          .font(.title2.bold())
+                                      Text("إنهاء")
+                                          .font(.system(size: 22, weight: .black, design: .rounded))
+                                  }
+                                  .foregroundColor(.white)
+                                  .frame(maxWidth: .infinity)
+                                  .padding(.vertical, 18)
+                                  .background(
+                                      LinearGradient(
+                                          colors: [Color.red, Color(red: 0.75, green: 0.0, blue: 0.15)],
+                                          startPoint: .top,
+                                          endPoint: .bottom
+                                      )
+                                  )
+                                  .cornerRadius(22)
+                                  .shadow(color: Color.red.opacity(0.6), radius: 12, x: 0, y: 6)
+                              }
+                              .disabled(!vm.isPlaying)
+                              .opacity(!vm.isPlaying ? 0.5 : 1.0)
+                          }
+                          .padding(.horizontal, 20)
+                          .padding(.bottom, 16)
+                      }
+                      .environment(\.layoutDirection, .rightToLeft)
+
+                      if vm.didExplode {
+                          ZStack {
+                              Color.red.opacity(0.94)
+                                  .ignoresSafeArea()
+
+                              VStack(spacing: 24) {
+                                  Text("💥 بُوم! انتهى الوقت!")
+                                      .font(.system(size: 42, weight: .black, design: .rounded))
+                                      .foregroundColor(.white)
+                                      .multilineTextAlignment(.center)
+                                      .shadow(color: .black.opacity(0.6), radius: 10, x: 0, y: 5)
+                                      .padding(.horizontal, 20)
+
+                                  Button(action: {
+                                      vm.startGame()
+                                  }) {
+                                      HStack(spacing: 10) {
+                                          Image(systemName: "play.fill")
+                                          Text("جولة جديدة")
+                                              .font(.system(size: 24, weight: .black, design: .rounded))
+                                      }
+                                      .foregroundColor(.white)
+                                      .padding(.horizontal, 36)
+                                      .padding(.vertical, 18)
+                                      .background(Color.green)
+                                      .cornerRadius(24)
+                                      .shadow(color: .black.opacity(0.4), radius: 12, x: 0, y: 6)
+                                  }
+                              }
+                          }
+                          .transition(.scale.combined(with: .opacity))
+                      }
+                  }
+              }
+          }
+
+          struct BombEyeView: View {
+              var pupilOffset: CGSize
+
+              var body: some View {
+                  ZStack {
+                      Ellipse()
+                          .fill(Color.white)
+                          .frame(width: 46, height: 54)
+                          .overlay(Ellipse().stroke(Color.black, lineWidth: 3))
+
+                      Circle()
+                          .fill(Color.black)
+                          .frame(width: 24, height: 24)
+                          .overlay(
+                              Circle()
+                                  .fill(Color.white)
+                                  .frame(width: 8, height: 8)
+                                  .offset(x: -4, y: -4)
+                          )
+                          .offset(pupilOffset)
+                  }
+              }
+          }
+          EOF
+
+      - name: Generate Xcode Project
+        run: |
+          brew install xcodegen
+          xcodegen generate
+
+      - name: Compile Unsigned iOS App
+        run: |
+          xcodebuild clean build \
+            -project TheBombGame.xcodeproj \
+            -target TheBombGame \
+            -sdk iphoneos \
+            -configuration Release \
+            SYMROOT="$(pwd)/build" \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Package into .ipa
+        run: |
+          mkdir -p Payload
+          cp -r build/Release-iphoneos/TheBombGame.app Payload/
+          zip -r TheBombGame.ipa Payload
+
+      - name: Upload TheBombGame.ipa Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TheBombGame-iOS-IPA
+          path: TheBombGame.ipa
