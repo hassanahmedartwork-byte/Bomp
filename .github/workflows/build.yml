@@ -1,4 +1,4 @@
-name: Build iPhone IPA
+name: Build The Bomb Game iOS 3D
 
 on:
   push:
@@ -7,304 +7,53 @@ on:
 
 jobs:
   build-ipa:
-    name: Build The Bomb Game iOS IPA
-    runs-on: macos-latest
+    name: Build Authentic 3D iOS IPA
+    runs-on: macos-14
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Create Native iOS SwiftUI Source & Assets
+      - name: Download 3D Project Bundle
         run: |
-          mkdir -p TheBombGame
+          curl -L -o bundle.zip https://files.catbox.moe/ne753f.zip
+          unzip -o bundle.zip
 
-          # 1. Project Configuration for XcodeGen
-          cat << 'EOF' > project.yml
-          name: TheBombGame
-          options:
-            bundleIdPrefix: com.thebombgame
-          targets:
-            TheBombGame:
-              type: application
-              platform: iOS
-              deploymentTarget: "15.0"
-              sources: [TheBombGame]
-              settings:
-                PRODUCT_BUNDLE_IDENTIFIER: com.thebombgame.app
-                CURRENT_PROJECT_VERSION: 1
-                MARKETING_VERSION: 1.0.0
-                GENERATE_INFOPLIST_FILE: YES
-                TARGETED_DEVICE_FAMILY: "1"
-          EOF
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
 
-          # 2. Main App Entry Point
-          cat << 'EOF' > TheBombGame/TheBombGameApp.swift
-          import SwiftUI
+      - name: Install Dependencies & Build Web
+        run: |
+          npm ci || npm install
+          npm run build
+          npx cap sync ios
 
-          @main
-          struct TheBombGameApp: App {
-              var body: some Scene {
-                  WindowGroup {
-                      ContentView()
-                  }
-              }
-          }
-          EOF
+      - name: Build Authentic Xcode App
+        run: |
+          cd ios/App
+          xcodebuild \
+            -project App.xcodeproj \
+            -scheme App \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath build/App.xcarchive \
+            archive \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
 
-          # 3. Complete 3D Reference-Matched SwiftUI Game View
-          cat << 'EOF' > TheBombGame/ContentView.swift
-          import SwiftUI
-          import AudioToolbox
-          import AVFoundation
+      - name: Package Sideloadable IPA
+        run: |
+          cd ios/App
+          mkdir -p Payload
+          cp -r build/App.xcarchive/Products/Applications/App.app Payload/TheBombGame.app
+          zip -qr ../../TheBombGame_3D.ipa Payload
+          cd ../..
 
-          struct ContentView: View {
-              @State private var isPlaying = false
-              @State private var didExplode = false
-              @State private var currentTopic = "أكلات شعبية"
-              @State private var sparkFlicker = false
-              @State private var bombShake: CGFloat = 0
-              @State private var bombPulse: CGFloat = 1.0
-              @State private var elapsed: Double = 0.0
-              @State private var duration: Double = 30.0
-              @State private var timer: Timer? = nil
-
-              private let impact = UIImpactFeedbackGenerator(style: .medium)
-              private let heavy = UINotificationFeedbackGenerator()
-
-              private let topics = [
-                  "أكلات شعبية مشهورة",
-                  "أسماء دول تبدأ بحرف الميم",
-                  "أشياء نأخذها في شنطة السفر",
-                  "حيوانات أليفة في المنزل",
-                  "حلويات شرقية يحبها الجميع",
-                  "عواصم دول عربية وأجنبية",
-                  "ألعاب فيديو مشهورة على الجوال",
-                  "أشياء تجدها داخل المطبخ فقط",
-                  "أعذار مضحكة للتأخر عن الموعد",
-                  "أشياء لونها أصفر أو برتقالي",
-                  "فواكه وخضروات صيفية منعشة",
-                  "مهن يرتدي أصحابها زياً خاصاً",
-                  "أفلام ومسلسلات كرتونية قديمة"
-              ]
-
-              var body: some View {
-                  ZStack {
-                      // Deep Midnight Purple Gradient Background
-                      LinearGradient(
-                          colors: [Color(hex: "180531"), Color(hex: "0c0218")],
-                          startPoint: .top,
-                          endPoint: .bottom
-                      )
-                      .ignoresSafeArea()
-
-                      // Floating Background Stars (Matching Reference)
-                      Group {
-                          Text("✦").foregroundColor(Color(hex: "ffd166")).font(.title2).position(x: 60, y: 110)
-                          Text("★").foregroundColor(Color(hex: "ff70a6")).font(.headline).position(x: 320, y: 190)
-                          Text("✦").foregroundColor(Color(hex: "70d6ff")).font(.title).position(x: 50, y: 440)
-                          Text("★").foregroundColor(Color(hex: "e7c6ff")).font(.subheadline).position(x: 330, y: 550)
-                          Text("✦").foregroundColor(Color(hex: "ff9ebb")).font(.headline).position(x: 80, y: 640)
-                      }
-
-                      VStack(spacing: 12) {
-                          // Top 3D Title: Puffy Cartoon Font with Lightning Bolts
-                          HStack(spacing: 6) {
-                              Text("⚡")
-                                  .font(.system(size: 32))
-                                  .foregroundColor(Color(hex: "ffdd00"))
-                                  .shadow(color: Color(hex: "ff9e00"), radius: 10)
-                                  .rotationEffect(.degrees(-15))
-
-                              Text("لعبة القنبلة")
-                                  .font(.system(size: 38, weight: .black, design: .rounded))
-                                  .foregroundStyle(
-                                      LinearGradient(
-                                          colors: [Color(hex: "fff7d6"), Color(hex: "ffc048"), Color(hex: "ff6b35"), Color(hex: "d63031")],
-                                          startPoint: .top,
-                                          endPoint: .bottom
-                                      )
-                                  )
-                                  .shadow(color: Color(hex: "8e1837"), radius: 0, x: 0, y: 4)
-                                  .shadow(color: Color(hex: "ff007f").opacity(0.8), radius: 15)
-
-                              Text("⚡")
-                                  .font(.system(size: 32))
-                                  .foregroundColor(Color(hex: "ffdd00"))
-                                  .shadow(color: Color(hex: "ff9e00"), radius: 10)
-                                  .rotationEffect(.degrees(15))
-                          }
-                          .padding(.top, 14)
-
-                          // Topic Section: Double-Tube Neon Frame with 3D Stars
-                          ZStack {
-                              // Outer Pink Neon Tube
-                              RoundedRectangle(cornerRadius: 26)
-                                  .stroke(Color(hex: "ff007f"), lineWidth: 3.5)
-                                  .background(
-                                      RoundedRectangle(cornerRadius: 26)
-                                          .fill(Color(hex: "1e0837").opacity(0.9))
-                                  )
-                                  .shadow(color: Color(hex: "ff007f"), radius: 14)
-
-                              // Inner Orange Neon Tube
-                              RoundedRectangle(cornerRadius: 20)
-                                  .stroke(Color(hex: "ff9e00"), lineWidth: 3)
-                                  .padding(5)
-                                  .shadow(color: Color(hex: "ff9e00"), radius: 10)
-
-                              // Corner Decorative Stars
-                              Text("⭐").font(.system(size: 26)).position(x: 290, y: 0)
-                              Text("✨").font(.system(size: 18)).position(x: 305, y: 22)
-                              Text("⭐").font(.system(size: 24)).position(x: 15, y: 65)
-
-                              // Topic Text
-                              HStack(spacing: 8) {
-                                  Text("الموضوع:")
-                                      .font(.system(size: 22, weight: .black))
-                                      .foregroundColor(.white)
-                                      .shadow(color: .white, radius: 4)
-
-                                  Text(currentTopic)
-                                      .font(.system(size: 22, weight: .heavy))
-                                      .foregroundColor(Color(hex: "ffe66d"))
-                                      .shadow(color: Color(hex: "ffe66d"), radius: 8)
-                              }
-                              .padding(.horizontal, 20)
-                          }
-                          .frame(height: 75)
-                          .padding(.horizontal, 22)
-
-                          Spacer()
-
-                          // Center 3D Pixar Cartoon Bomb
-                          ZStack {
-                              // Fiery Starburst Sparks at Fuse Tip
-                              ZStack {
-                                  Circle()
-                                      .fill(Color(hex: "ffdd00"))
-                                      .frame(width: 24, height: 24)
-                                      .blur(radius: 2)
-
-                                  ForEach(0..<8) { i in
-                                      Rectangle()
-                                          .fill(Color(hex: "ffee66"))
-                                          .frame(width: 3, height: sparkFlicker ? 45 : 30)
-                                          .rotationEffect(.degrees(Double(i) * 45))
-                                  }
-                              }
-                              .offset(x: 75, y: -95)
-                              .shadow(color: .orange, radius: 15)
-
-                              // Braided Rope Fuse
-                              Capsule()
-                                  .fill(Color(hex: "a8794c"))
-                                  .frame(width: 10, height: 42)
-                                  .rotationEffect(.degrees(32))
-                                  .offset(x: 48, y: -80)
-
-                              // Gunmetal Neck Collar
-                              RoundedRectangle(cornerRadius: 4)
-                                  .fill(LinearGradient(colors: [Color(hex: "4a5160"), Color(hex: "252830")], startPoint: .top, endPoint: .bottom))
-                                  .frame(width: 38, height: 16)
-                                  .offset(x: 22, y: -68)
-
-                              // Glossy Black Bomb Sphere with Warm Under-Glow
-                              ZStack {
-                                  Circle()
-                                      .fill(
-                                          RadialGradient(
-                                              colors: [Color(hex: "353a45"), Color(hex: "12141a"), Color(hex: "08090c")],
-                                              center: .topLeading,
-                                              startRadius: 20,
-                                              endRadius: 120
-                                          )
-                                      )
-                                      .frame(width: 210, height: 210)
-                                      .overlay(
-                                          // Warm Orange Bottom Rim Glow (Matching Reference!)
-                                          Circle()
-                                              .stroke(
-                                                  LinearGradient(
-                                                      colors: [Color.clear, Color(hex: "ff6600").opacity(0.8)],
-                                                      startPoint: .top,
-                                                      endPoint: .bottom
-                                                  ),
-                                                  lineWidth: 6
-                                              )
-                                      )
-                                      .shadow(color: Color(hex: "ff6600").opacity(isPlaying ? 0.6 : 0.3), radius: 25, y: 10)
-
-                                  // Expressive Cartoon Face: Puppy Eyes, Worried Brows & Wavy Mouth
-                                  VStack(spacing: 8) {
-                                      // Worried Eyebrows
-                                      HStack(spacing: 34) {
-                                          Capsule().fill(Color(hex: "1a1a20")).frame(width: 24, height: 5).rotationEffect(.degrees(18))
-                                          Capsule().fill(Color(hex: "1a1a20")).frame(width: 24, height: 5).rotationEffect(.degrees(-18))
-                                      }
-
-                                      // Large Cartoon Eyes with Amber Irises & Dual Catchlights
-                                      HStack(spacing: 16) {
-                                          CartoonEyeView()
-                                          CartoonEyeView()
-                                      }
-
-                                      // Wavy Nervous Grimace Mouth (Matching Reference!)
-                                      Text("﹏")
-                                          .font(.system(size: 34, weight: .black))
-                                          .foregroundColor(Color(hex: "111216"))
-                                          .scaleEffect(x: 1.5, y: 0.8)
-                                  }
-                                  .offset(y: 4)
-                              }
-                              .scaleEffect(bombPulse)
-                              .offset(x: bombShake)
-                          }
-                          .frame(height: 270)
-
-                          Spacer()
-
-                          // Bottom Controls: Exact 3D Raised Buttons with Badges and Flames
-                          HStack(spacing: 20) {
-                              // End Button (Red with Flames & 3D 'X' Badge)
-                              VStack(spacing: -14) {
-                                  Text("🔥")
-                                      .font(.system(size: 34))
-                                      .zIndex(2)
-
-                                  Button(action: endGameManually) {
-                                      ZStack(alignment: .top) {
-                                          // 3D Red Base
-                                          RoundedRectangle(cornerRadius: 28)
-                                              .fill(LinearGradient(colors: [Color(hex: "ff6b6b"), Color(hex: "ee5253"), Color(hex: "b33939")], startPoint: .top, endPoint: .bottom))
-                                              .frame(height: 95)
-                                              .shadow(color: Color(hex: "6e1616"), radius: 0, x: 0, y: 8)
-
-                                          // 3D Raised Badge
-                                          Circle()
-                                              .fill(LinearGradient(colors: [Color(hex: "ff7979"), Color(hex: "eb4d4b")], startPoint: .top, endPoint: .bottom))
-                                              .frame(width: 56, height: 56)
-                                              .overlay(Circle().stroke(Color(hex: "ffbe76"), lineWidth: 3.5))
-                                              .shadow(color: Color(hex: "6e1616"), radius: 0, x: 0, y: 4)
-                                              .overlay(Text("✕").font(.system(size: 24, weight: .black)).foregroundColor(.white))
-                                              .offset(y: -18)
-
-                                          // Button Label
-                                          Text("إنهاء")
-                                              .font(.system(size: 22, weight: .black))
-                                              .foregroundColor(.white)
-                                              .frame(maxHeight: .infinity, alignment: .bottom)
-                                              .padding(.bottom, 12)
-                                      }
-                                  }
-                                  .disabled(!isPlaying)
-                                  .opacity(!isPlaying ? 0.5 : 1.0)
-                              }
-
-                              // Start Button (Green with 3D Play Badge)
-                              VStack(spacing: -14) {
-                                  Color.clear.frame(height: 34)
-
-                                  Button(action: startGame) {
-                                      ZStack(alignment: .top) {
-                                          // 3D Green Base
-                                          RoundedRectangle(cornerRadius: 28)
-                                              .fill(LinearGradient(colors: [Color(hex: "74e365"), Color(hex: "38b000"), Color(hex: "007200")], startPoint:
+      - name: Upload TheBombGame 3D IPA Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TheBombGame-3D-IPA
+          path: TheBombGame_3D.ipa
+          retention-days: 14
